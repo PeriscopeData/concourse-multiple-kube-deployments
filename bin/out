@@ -9,6 +9,11 @@ echo "Starting out"
 payload="$(mktemp "$TMPDIR/k8s-resource-request.XXXXXX")"
 cat > "$payload" <&0
 
+DRY_RUN=$(jq -r .params.dry_run < "$payload")
+if [[ "$DRY_RUN" == "true" ]]; then
+    echo "********************** Running in DRY_RUN mode **********************"
+fi
+
 rollback() {
     DEPLOYMENT=$1
     DRY_RUN=$2
@@ -16,49 +21,6 @@ rollback() {
     echo "Running: $KUBECTL rollout undo deployment/$DEPLOYMENT"
     if [[ "$DRY_RUN" == "null" ]] || [[ "$DRY_RUN" == "false" ]]; then
         $KUBECTL rollout undo "deployment/$DEPLOYMENT"
-    fi
-}
-
-deploy() {
-    DEPLOYMENT=$1
-    CONTAINER=$2
-    IMAGE=$3
-    DEPLOYMENT_PATH=$4
-    IMG_PREFIX=$5
-    DRY_RUN=$6
-
-    [ -n "$DEPLOYMENT" ] || exit 1
-    [ -n "$IMAGE" ] || exit 1
-    [ -n "$CONTAINER" ] || exit 1
-
-    $KUBECTL get deployments --show-labels --output=json > /tmp/deployments.json
-
-    if [[ -n "$DEPLOYMENT_PATH" ]] && [[ "$DEPLOYMENT_PATH" != "null" ]] && [[ -n "$IMG_PREFIX" ]] && [[ "$IMG_PREFIX" != "null" ]]; then
-        echo "Deployment path set to $DEPLOYMENT_PATH"
-        echo "Image prefix set to $IMG_PREFIX"
-        if [[ "$DRY_RUN" == "null" ]] || [[ "$DRY_RUN" == "false" ]]; then
-            cat "${DEPLOYMENT_PATH}" | sed "s~image:[ \t]*\($IMG_PREFIX\/.*\).*~image: $IMAGE~" | $KUBECTL replace --record -f -
-        fi
-    else
-        echo 'Setting image only.'
-        if [[ "$DRY_RUN" == "null" ]] || [[ "$DRY_RUN" == "false" ]]; then
-            $KUBECTL set image "deployment/$DEPLOYMENT" "$CONTAINER=$IMAGE" --record
-        fi
-    fi
-}
-
-start_job() {
-    JOB=$1
-    IMAGE=$2
-    UID=${3:-$(date +%s)}
-    DRY_RUN=$4
-
-    [ -n "$JOB" ] || exit 1
-    [ -n "$IMAGE" ] || exit 1
-    [ -n "$UID" ] || exit 1
-
-    if [[ "$DRY_RUN" == "null" ]] || [[ "$DRY_RUN" == "false" ]]; then
-        cat "$JOB" | IMAGE=$IMAGE UID=$UID envsubst | $KUBECTL create --record -f -
     fi
 }
 
@@ -92,56 +54,19 @@ if [[ "$KUBE_URL" =~ https.* ]]; then
 fi
 
 export KUBECTL
+DEPLOYMENT_LIST=$(jq -r .source.deployment_list< "$payload")
+SANITIZED_DEPLOYMENT_LIST=`echo $DEPLOYMENT_LIST | sed -e 's,\,,,g' | sed -e 's,\[,,g' | sed -e 's,\],,g' | sed -e 's,\",,g'`
+DEPLOYMENT_ARRAY=($SANITIZED_DEPLOYMENT_LIST)
 
 ROLLBACK=$(jq -r .params.rollback < "$payload")
-RESOURCE_TYPE=$(jq -r .source.resource_type < "$payload")
-RESOURCE_NAME=$(jq -r .source.resource_name < "$payload")
-DRY_RUN=$(jq -r .params.dry_run < "$payload")
-
-if [[ -z "$RESOURCE_TYPE" ]]; then
-    RESOURCE_TYPE=$(jq -r .params.resource_type < "$payload")
+if [[ "$ROLLBACK" == "true" ]]; then
+    echo "********************** Method invoked: Rollback **********************"
 fi
 
-if [[ -z "$RESOURCE_NAME" ]]; then
-    RESOURCE_TYPE=$(jq -r .params.resource_name < "$payload")
-fi
-
-if [[ "$RESOURCE_TYPE" = 'deployment' ]]; then
-    if [[ "$ROLLBACK" = "true" ]]; then
-        rollback "$RESOURCE_NAME" "$DRY_RUN";
-    else
-        case $RESOURCE_TYPE in
-            deployment)
-            RESOURCE_PATH=$(jq -r .params.resource_path < "$payload")
-            CONTAINER_NAME=$(jq -r .source.container_name < "$payload")
-            DEPLOYMENT_PATH=$(jq -r .source.deployment_file < "$payload")
-            IMG_PREFIX=$(jq -r .source.image_prefix < "$payload")
-
-            if [[ "$DEPLOYMENT_PATH" == "null" ]]; then
-                DEPLOYMENT_PATH=$(jq -r .params.deployment_file < "$payload")
-            fi
-
-            if [[ "$IMG_PREFIX" == "null" ]]; then
-                IMG_PREFIX=$(jq -r .params.image_prefix < "$payload")
-            fi
-
-            if [[ "$CONTAINER_NAME" == "null" ]]; then
-              CONTAINER_NAME=$RESOURCE_NAME
-            fi
-
-            IMG_FILE=$(jq -r .params.image_name < "$payload")
-            IMG=$(cat "$IMG_FILE")
-            TAG_FILE=$(jq -r .params.image_tag < "$payload")
-            TAG=$(cat "$TAG_FILE")
-            IMG="$IMG:$TAG"
-
-            deploy "$RESOURCE_NAME" "$CONTAINER_NAME" "$IMG" "$DEPLOYMENT_PATH" "$IMG_PREFIX" "$DRY_RUN";;
-            job)
-            start_job "$RESOURCE_PATH" "$IMG" "$(date +%s)" "$DRY_RUN";;
-            *)
-            exit 1
-        esac
-    fi
+if [[ "$ROLLBACK" = "true" ]]; then
+    for deployment_name in "${DEPLOYMENT_ARRAY[@]}"; do
+        rollback $deployment_name "$DRY_RUN";
+    done
 fi
 
 result="$(jq -n "{version:{container:\"$IMG\"}}")"

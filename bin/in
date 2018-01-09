@@ -7,7 +7,6 @@ exec 1>&2 # send normal stdout to stderr for logging
 echo "Starting in"
 payload="$(mktemp "$TMPDIR/k8s-resource-request.XXXXXX")"
 cat > "$payload" <&0
-
 cd "$1"
 
 mkdir -p /root/.kube
@@ -33,21 +32,23 @@ if [[ "$KUBE_URL" =~ https.* ]]; then
     KUBECTL="$KUBECTL --certificate-authority=$CA_PATH --client-key=$KEY_PATH --client-certificate=$CERT_PATH"
 fi
 
-# get kube resource id
-RESOURCE_TYPE=$(jq -r .source.resource_type < "$payload")
-RESOURCE_NAME=$(jq -r .source.resource_name < "$payload")
+export KUBECTL
 
-if [[ -z "$RESOURCE_TYPE" ]] || [[ -z "$RESOURCE_NAME" ]]; then
-    result=""
-else
-    export KUBECTL
+DEPLOYMENT_LIST=$(jq -r .source.deployment_list< "$payload")
+SANITIZED_DEPLOYMENT_LIST=`echo $DEPLOYMENT_LIST | sed -e 's,\,,,g' | sed -e 's,\[,,g' | sed -e 's,\],,g' | sed -e 's,\",,g'`
+DEPLOYMENT_ARRAY=($SANITIZED_DEPLOYMENT_LIST)
+echo "The list of deployments passed to this script:"
+echo ${DEPLOYMENT_ARRAY[@]}
 
-    RESOURCE="$RESOURCE_TYPE/$RESOURCE_NAME"
-
+result=`jq -n '{}'`
+for deployment_name in "${DEPLOYMENT_ARRAY[@]}"; do
+    RESOURCE="deployment/$deployment_name"
     IMG=$($KUBECTL get -o json "$RESOURCE" | jq -r '.spec.template.spec.containers[0].image')
-
-    result="$(jq -n "{version:{container:\"$IMG\"}}")"
-fi
+    KEY=$deployment_name
+    VAL=$IMG
+    result=`echo $result | jq --arg a $KEY --arg b $VAL '.version[$a] = $b'`
+    COUNTER=$[$COUNTER + 1]
+done
 
 echo "In complete"
 echo "$result" | jq -s add  >&3
