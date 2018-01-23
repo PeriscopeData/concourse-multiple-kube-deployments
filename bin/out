@@ -26,10 +26,11 @@ rollback() {
 
 deploy() {
     DEPLOYMENT=$1
-    IMAGE=$2
-    DEPLOYMENT_PATH=$3
-    IMG_PREFIX=$4
-    DRY_RUN=$5
+    CONTAINER=$2
+    IMAGE=$3
+    DEPLOYMENT_PATH=$4
+    IMG_PREFIX=$5
+    DRY_RUN=$6
 
     [ -n "$DEPLOYMENT" ] || exit 1
     [ -n "$IMAGE" ] || exit 1
@@ -46,7 +47,7 @@ deploy() {
         echo 'Setting image only.'
         echo "Running: $KUBECTL set image "deployment/$DEPLOYMENT" "$DEPLOYMENT=$IMAGE" --record"
         if [[ "$DRY_RUN" == "null" ]] || [[ "$DRY_RUN" == "false" ]]; then
-            $KUBECTL set image "deployment/$DEPLOYMENT" "$DEPLOYMENT=$IMAGE" --record
+            $KUBECTL set image "deployment/$DEPLOYMENT" "$CONTAINER=$IMAGE" --record
         fi
     fi
 }
@@ -99,6 +100,7 @@ elif [[ "$DEPLOY" == "true" ]]; then
 
     DEPLOYMENT_PATH=$(jq -r .source.deployment_file < "$payload")
     IMG_PREFIX=$(jq -r .source.image_prefix < "$payload")
+    CONTAINER_NAME=$(jq -r .source.container_name < "$payload")        
 
     if [[ "$DEPLOYMENT_PATH" == "null" ]]; then
         DEPLOYMENT_PATH=$(jq -r .params.deployment_file < "$payload")
@@ -115,7 +117,10 @@ elif [[ "$DEPLOY" == "true" ]]; then
     IMG="$IMG:$TAG"
 
     for deployment_name in "${DEPLOYMENT_ARRAY[@]}"; do
-        deploy $deployment_name "$IMG" "$DEPLOYMENT_PATH" "$IMG_PREFIX" "$DRY_RUN";
+        if [[ "$CONTAINER_NAME" == "null" ]]; then
+            CONTAINER_NAME="$deployment_name"
+        fi
+        deploy "$deployment_name" "$CONTAINER_NAME" "$IMG" "$DEPLOYMENT_PATH" "$IMG_PREFIX" "$DRY_RUN";
     done
 fi
 
