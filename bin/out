@@ -118,9 +118,11 @@ elif [[ "$DEPLOY" == "true" ]]; then
 
     for deployment_name in "${DEPLOYMENT_ARRAY[@]}"; do
         if [[ "$CONTAINER_NAME" == "null" ]]; then
-            CONTAINER_NAME="$deployment_name"
+            container_name="$deployment_name"
+        else
+            container_name="$CONTAINER_NAME"
         fi
-        deploy "$deployment_name" "$CONTAINER_NAME" "$IMG" "$DEPLOYMENT_PATH" "$IMG_PREFIX" "$DRY_RUN";
+        deploy "$deployment_name" "$container_name" "$IMG" "$DEPLOYMENT_PATH" "$IMG_PREFIX" "$DRY_RUN";
     done
 fi
 
