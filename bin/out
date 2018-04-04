@@ -124,6 +124,9 @@ elif [[ "$DEPLOY" == "true" ]]; then
         fi
         deploy "$deployment_name" "$container_name" "$IMG" "$DEPLOYMENT_PATH" "$IMG_PREFIX" "$DRY_RUN";
     done
+else
+    echo -e "\033[91m* ERROR: Invalid params passed. Pass in either 'deploy: true' or 'rollback: true'.\033[0m"
+    exit 1
 fi
 
 result="$(jq -n "{version:{container:\"$IMG\"}}")"
