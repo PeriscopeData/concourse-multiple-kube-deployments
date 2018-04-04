@@ -1,4 +1,5 @@
 #!/bin/bash
+
 set -e
 set -o pipefail
 exec 3>&1 # use fd 3 for script output
@@ -110,8 +111,7 @@ elif [[ "$DEPLOY" == "true" ]]; then
         IMG_PREFIX=$(jq -r .params.image_prefix < "$payload")
     fi
 
-    IMG_FILE=$(jq -r .params.image_name < "$payload")
-    IMG=$(cat "$IMG_FILE")
+    IMG=$(jq -r .params.image_name < "$payload")
     TAG_FILE=$(jq -r .params.image_tag < "$payload")
     TAG=$(cat "$TAG_FILE")
     IMG="$IMG:$TAG"
@@ -124,6 +124,9 @@ elif [[ "$DEPLOY" == "true" ]]; then
         fi
         deploy "$deployment_name" "$container_name" "$IMG" "$DEPLOYMENT_PATH" "$IMG_PREFIX" "$DRY_RUN";
     done
+else
+    echo -e "\033[91m* ERROR: Invalid params passed. Pass in either 'deploy: true' or 'rollback: true'.\033[0m"
+    exit 1
 fi
 
 result="$(jq -n "{version:{container:\"$IMG\"}}")"
