@@ -49,6 +49,9 @@ deploy() {
         echo "Running: $KUBECTL set image "deployment/$DEPLOYMENT" "$DEPLOYMENT=$IMAGE" --record"
         if [[ "$DRY_RUN" == "null" ]] || [[ "$DRY_RUN" == "false" ]]; then
             $KUBECTL set image "deployment/$DEPLOYMENT" "$CONTAINER=$IMAGE" --record
+            if [[ "$DEPLOYMENT" == "web-smoke-tests" ]]; then
+                $KUBECTL rollout status deployment/web-smoke-tests;
+            fi
         fi
     fi
 }
